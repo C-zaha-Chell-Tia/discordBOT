@@ -2,11 +2,9 @@ import os
 import sys
 import random
 import time
-from datetime import datetime
 
 def print_systemd_shutdown_ok(RST, WHT, GRN):
-    """画像の表記スタイルを正確に模倣した [  OK  ] 付きシャットダウンログ"""
-    
+    """画像スタイルの [  OK  ] 付きシャットダウンログ"""
     ok_prefix = f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}"
     
     logs = [
@@ -48,28 +46,9 @@ def print_systemd_shutdown_ok(RST, WHT, GRN):
         time.sleep(0.015)
         print(line, flush=True)
 
-    # 最後の systemd-shutdown タイムスタンプ表示（画像一番下スタイル）
     uptime_sec = round(random.uniform(30000, 40000), 6)
     print(f"{WHT}[{uptime_sec:12.6f}] systemd-shutdown[1]: Syncing filesystems and block devices.{RST}", flush=True)
     print(f"{WHT}[{uptime_sec + 0.000120:12.6f}] systemd-shutdown[1]: Powering off.{RST}\n", flush=True)
-
-def print_normal_boot_sequence(RST, WHT, GRN):
-    """Ubuntu 24.04 LTS (Noble Numbat) Boot ログ"""
-    now = datetime.now().strftime("%b %d %H:%M:%S")
-    hostname = "ubuntu"
-    boot_id = "".join(random.choices("0123456789abcdef", k=32))
-
-    print(f"-- Boot {boot_id} --", flush=True)
-    print(f"{now} {hostname} kernel: microcode: microcode updated early to revision 0x22, date = 2024-01-15", flush=True)
-    print(f"{now} {hostname} kernel: Linux version 6.8.0-1015-azure (buildd@bos03-amd64-001) (x86_64-linux-gnu-gcc-13) #18-Ubuntu SMP PREEMPT_DYNAMIC", flush=True)
-    print(f"{now} {hostname} kernel: Command line: BOOT_IMAGE=/boot/vmlinuz-6.8.0-1015-azure root=/dev/discord/bot-env ro quiet splash", flush=True)
-    print(f"{now} {hostname} kernel: BIOS-provided physical RAM map:", flush=True)
-    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000000000-0x000000000009b3ff] usable", flush=True)
-    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x000000000009b400-0x000000000009ffff] reserved", flush=True)
-    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000100000-0x000000000fffffff] usable", flush=True)
-    print(f"{now} {hostname} kernel: EXT4-fs (discord-bot-env): mounted filesystem with ordered data mode.", flush=True)
-    print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Started Roomba Control Daemon Service.{RST}", flush=True)
-    print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Connected to Discord Gateway Websocket.{RST}", flush=True)
 
 def main():
     step_outcome = os.getenv("STEP_OUTCOME", "")
@@ -102,14 +81,12 @@ def main():
 
     # 1. 正常終了
     if outcome == "success":
-        print_normal_boot_sequence(RST, WHT, GRN)
         print_systemd_shutdown_ok(RST, WHT, GRN)
         print("::endgroup::", flush=True)
         sys.exit(0)
 
-    # 2. 実行キャンセル（[ OK ] 付与でクリーンシャットダウンし exit 0）
+    # 2. 実行キャンセル（クリーンシャットダウンして exit 0）
     elif outcome == "cancelled":
-        print_normal_boot_sequence(RST, WHT, GRN)
         print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Stopped Roomba Control Daemon Service (SIGTERM/SIGINT processed).{RST}", flush=True)
         print_systemd_shutdown_ok(RST, WHT, GRN)
         print("::endgroup::", flush=True)
