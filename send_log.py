@@ -2,27 +2,48 @@ import os
 import sys
 import random
 import time
+from datetime import datetime
 
-def print_shutdown_sequence(RST, WHT, GRN, YEL):
-    """正常時・キャンセル時のみ出力するシャットダウン処理"""
-    print("\nInitiating System Shutdown / Cleanup Sequence...", flush=True)
+def print_systemd_shutdown():
+    """Ubuntu LTS の本物の systemd シャットダウンログを模倣"""
+    now = datetime.now().strftime("%b %d %H:%M:%S")
+    hostname = "ubuntu"
     
-    services = [
-        "Unmounting Discord Bot Virtual Filesystem (/dev/discord/bot-env)",
-        "Stopping Roomba Control Daemon Service",
-        "Disconnecting Active Gateway Websocket Connections",
-        "Clearing Local Workspace Cache and Temporary Objects",
-        "Sending Final Termination Signal (SIGTERM) to Python Processes",
-        "Flushing Pending Log Buffers to Console Output",
-        "Deallocating Execution Context and Environment Memory"
+    shutdown_logs = [
+        f"{now} {hostname} systemd[1]: Reached target shutdown.target - System Shutdown.",
+        f"{now} {hostname} systemd[1]: Reached target final.target - Late Shutdown Services.",
+        f"{now} {hostname} systemd[1]: systemd-poweroff.service: Deactivated successfully.",
+        f"{now} {hostname} systemd[1]: Finished systemd-poweroff.service - System Power Off.",
+        f"{now} {hostname} systemd[1]: Reached target poweroff.target - System Power Off.",
+        f"{now} {hostname} systemd[1]: Shutting down.",
+        f"{now} {hostname} systemd-shutdown[1]: Syncing filesystems and block devices.",
+        f"{now} {hostname} systemd-shutdown[1]: Sending SIGTERM to remaining processes...",
+        f"{now} {hostname} systemd-journald[258]: Received SIGTERM from PID 1 (systemd-shutdow).",
+        f"{now} {hostname} systemd-journald[258]: Journal stopped"
     ]
     
-    for svc in services:
-        time.sleep(0.05)
-        print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}{svc}.{RST}", flush=True)
+    print("\nInitiating System Shutdown Sequence...", flush=True)
+    for log in shutdown_logs:
+        time.sleep(0.02)
+        print(log, flush=True)
 
-    print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Stopped All Background Services.{RST}", flush=True)
-    print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Reached Target System Power-Off / Runner Exit.{RST}\n", flush=True)
+def print_normal_boot_sequence():
+    """Ubuntu 24.04 LTS (Noble Numbat) 起動 (dmesg) ログの模倣"""
+    now = datetime.now().strftime("%b %d %H:%M:%S")
+    hostname = "ubuntu"
+    boot_id = "".join(random.choices("0123456789abcdef", k=32))
+
+    print(f"-- Boot {boot_id} --", flush=True)
+    print(f"{now} {hostname} kernel: microcode: microcode updated early to revision 0x22, date = 2024-01-15", flush=True)
+    print(f"{now} {hostname} kernel: Linux version 6.8.0-1015-azure (buildd@bos03-amd64-001) (x86_64-linux-gnu-gcc-13) #18-Ubuntu SMP PREEMPT_DYNAMIC", flush=True)
+    print(f"{now} {hostname} kernel: Command line: BOOT_IMAGE=/boot/vmlinuz-6.8.0-1015-azure root=/dev/discord/bot-env ro quiet splash", flush=True)
+    print(f"{now} {hostname} kernel: BIOS-provided physical RAM map:", flush=True)
+    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000000000-0x000000000009b3ff] usable", flush=True)
+    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x000000000009b400-0x000000000009ffff] reserved", flush=True)
+    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000100000-0x000000000fffffff] usable", flush=True)
+    print(f"{now} {hostname} kernel: EXT4-fs (discord-bot-env): mounted filesystem with ordered data mode.", flush=True)
+    print(f"{now} {hostname} systemd[1]: Started Roomba Control Daemon Service.", flush=True)
+    print(f"{now} {hostname} systemd[1]: Connected to Discord Gateway Websocket.", flush=True)
 
 def main():
     step_outcome = os.getenv("STEP_OUTCOME", "")
@@ -47,35 +68,30 @@ def main():
     else:
         outcome = "success"
 
-    RST = "\033[0m"
-    WHT = "\033[37m"
-    RED = "\033[31m"
-    GRN = "\033[32m"
-    YEL = "\033[33m"
-
     print("::group::Execution Log Summary & System Status", flush=True)
 
     # 1. 正常終了
     if outcome == "success":
-        print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Roomba Control Daemon completed execution without errors.{RST}", flush=True)
-        print_shutdown_sequence(RST, WHT, GRN, YEL)
+        print_normal_boot_sequence()
+        print_systemd_shutdown()
         print("::endgroup::", flush=True)
         sys.exit(0)
 
-    # 2. 手動キャンセル
+    # 2. 実行キャンセル（OK判定で正常終了）
     elif outcome == "cancelled":
-        print(f"{WHT}[{RST} {YEL}****{RST}{WHT}]{RST} {WHT}Roomba Control Daemon execution cancelled by user or runner.{RST}", flush=True)
-        print(f"{WHT}[{RST} {YEL} WARN {RST}{WHT}]{RST} {WHT}SIGTERM/SIGINT received. Safe cancellation sequence initiated.{RST}", flush=True)
-        print_shutdown_sequence(RST, WHT, GRN, YEL)
+        now = datetime.now().strftime("%b %d %H:%M:%S")
+        print_normal_boot_sequence()
+        print(f"{now} ubuntu systemd[1]: Stopping Roomba Control Daemon Service (SIGTERM requested)...", flush=True)
+        print_systemd_shutdown()
         print("::endgroup::", flush=True)
-        sys.exit(1)
+        sys.exit(0)
 
-    # 3. エラー（本家 Linux カーネルパニック構文のみを出力）
+    # 3. エラー時（Kernel Panic）
     else:
-        if "SyntaxError" in log_content or "IndentationError" in log_content:
-            err_module = "PyParser_ASTFromFileObject"
-            err_msg = "Invalid python syntax detected before module import"
-            bios_bug = "ACPI: [Firmware Bug]: Your BIOS is broken; FW bug workaround enabled."
+        if "No such file" in log_content or "can't open file" in log_content or "FileNotFoundError" in log_content:
+            err_module = "vfs_mount_root_device"
+            err_msg = "Cannot locate root entry /dev/discord/bot-env/main.py"
+            bios_bug = "ACPI: [Firmware Bug]: Unable to resolve root filesystem block."
         elif "ModuleNotFoundError" in log_content or "ImportError" in log_content:
             err_module = "PyImport_ImportModuleLevelObject"
             err_msg = "Required library dependency missing from environment"
@@ -84,6 +100,10 @@ def main():
             err_module = "discord_auth_login"
             err_msg = "Invalid or expired authentication token"
             bios_bug = "ACPI: [Firmware Bug]: ACPI: BIOS _OSI(Linux) query ignored"
+        elif "SyntaxError" in log_content or "IndentationError" in log_content:
+            err_module = "PyParser_ASTFromFileObject"
+            err_msg = "Invalid python syntax detected before module import"
+            bios_bug = "ACPI: [Firmware Bug]: Your BIOS is broken; FW bug workaround enabled."
         else:
             err_module = "roomba_bot_main_crash"
             err_msg = "Unhandled exception in bot runtime"
@@ -94,27 +114,24 @@ def main():
         rnd_ino = random.randint(1000000, 9999999)
         rnd_blk = random.randint(10000, 99999)
 
-        # 本家 Linux Kernel Panic 構文
-        print(f"{WHT}[    0.000000] [Firmware Bug]: ACPI: BIOS _OSI(Linux) query ignored{RST}", flush=True)
-        print(f"{WHT}[    0.052144] {bios_bug}{RST}", flush=True)
-        print(f"{WHT}[    1.849201] VFS: Cannot open root device \"/dev/discord/bot-env\" error -{exit_code}{RST}", flush=True)
-        print(f"{WHT}[    1.849265] Please check system environment; cause: {err_msg}{RST}", flush=True)
-        print(f"{WHT}[    1.849312] Kernel panic - not syncing: Unable to mount roomba-bot environment{RST}", flush=True)
-        print(f"{WHT}[    1.849400] RIP: 0010:[<{rip_addr}>] {err_module}+0x12/0x80{RST}", flush=True)
-        print(f"{WHT}[    1.849420] Call Trace:{RST}", flush=True)
-        print(f"{WHT}[    1.849435]  <TASK>{RST}", flush=True)
-        print(f"{WHT}[    1.849451]  dump_stack_lvl+0x44/0x5c{RST}", flush=True)
-        print(f"{WHT}[    1.849480]  panic+0x118/0x2e4{RST}", flush=True)
-        print(f"{WHT}[    1.849509]  {err_module}+0x42/0x1e8{RST}", flush=True)
-        print(f"{WHT}[    1.849638]  ret_from_fork+0x1f/0x30{RST}", flush=True)
-        print(f"{WHT}[    1.849667]  </TASK>{RST}", flush=True)
-        print(f"{WHT}[    2.108432] Kernel panic - not syncing: Attempted to kill roomba-daemon! exitcode={hex_code}{RST}", flush=True)
-        print(f"{WHT}[    2.108900] ---[ end Kernel panic - not syncing: Attempted to kill roomba-daemon! exitcode={hex_code} ]---{RST}", flush=True)
-        print(f"{WHT}EXT4-fs error: inode #{rnd_ino}, block {rnd_blk}: core dump registered{RST}", flush=True)
+        print(f"[    0.000000] [Firmware Bug]: ACPI: BIOS _OSI(Linux) query ignored", flush=True)
+        print(f"[    0.052144] {bios_bug}", flush=True)
+        print(f"[    1.849201] VFS: Cannot open root device \"/dev/discord/bot-env\" error -{exit_code}", flush=True)
+        print(f"[    1.849265] Please check system environment; cause: {err_msg}", flush=True)
+        print(f"[    1.849312] Kernel panic - not syncing: Unable to mount roomba-bot environment", flush=True)
+        print(f"[    1.849400] RIP: 0010:[<{rip_addr}>] {err_module}+0x12/0x80", flush=True)
+        print(f"[    1.849420] Call Trace:", flush=True)
+        print(f"[    1.849435]  <TASK>", flush=True)
+        print(f"[    1.849451]  dump_stack_lvl+0x44/0x5c", flush=True)
+        print(f"[    1.849480]  panic+0x118/0x2e4", flush=True)
+        print(f"[    1.849509]  {err_module}+0x42/0x1e8", flush=True)
+        print(f"[    1.849638]  ret_from_fork+0x1f/0x30", flush=True)
+        print(f"[    1.849667]  </TASK>", flush=True)
+        print(f"[    2.108432] Kernel panic - not syncing: Attempted to kill roomba-daemon! exitcode={hex_code}", flush=True)
+        print(f"[    2.108900] ---[ end Kernel panic - not syncing: Attempted to kill roomba-daemon! exitcode={hex_code} ]---", flush=True)
+        print(f"EXT4-fs error: inode #{rnd_ino}, block {rnd_blk}: core dump registered", flush=True)
 
         print("::endgroup::", flush=True)
-
-        # 正常処理（OK群）は呼ばずに即座にエラーコード 1 で終了
         sys.exit(1)
 
 if __name__ == "__main__":
