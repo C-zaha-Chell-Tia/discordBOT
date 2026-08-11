@@ -5,9 +5,7 @@ import time
 
 def print_shutdown_sequence(RST, WHT, GRN, YEL):
     """シャットダウン（落とす時）の可視化ログ処理"""
-    print("\n" + "=" * 60, flush=True)
-    print(" Initiating System Shutdown / Cleanup Sequence...", flush=True)
-    print("=" * 60, flush=True)
+    print("\nInitiating System Shutdown / Cleanup Sequence...", flush=True)
     
     services = [
         "Unmounting Discord Bot Virtual Filesystem (/dev/discord/bot-env)",
@@ -24,7 +22,7 @@ def print_shutdown_sequence(RST, WHT, GRN, YEL):
         print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}{svc}.{RST}", flush=True)
 
     print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Stopped All Background Services.{RST}", flush=True)
-    print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Reached Target System Power-Off / Runner Exit.{RST}", flush=True)
+    print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Reached Target System Power-Off / Runner Exit.{RST}\n", flush=True)
     print("=" * 60 + "\n", flush=True)
 
 def main():
