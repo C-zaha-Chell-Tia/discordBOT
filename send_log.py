@@ -4,31 +4,57 @@ import random
 import time
 from datetime import datetime
 
-def print_systemd_shutdown():
-    """Ubuntu LTS の本物の systemd シャットダウンログを模倣"""
-    now = datetime.now().strftime("%b %d %H:%M:%S")
-    hostname = "ubuntu"
+def print_systemd_shutdown_ok(RST, WHT, GRN):
+    """画像の表記スタイルを正確に模倣した [  OK  ] 付きシャットダウンログ"""
     
-    shutdown_logs = [
-        f"{now} {hostname} systemd[1]: Reached target shutdown.target - System Shutdown.",
-        f"{now} {hostname} systemd[1]: Reached target final.target - Late Shutdown Services.",
-        f"{now} {hostname} systemd[1]: systemd-poweroff.service: Deactivated successfully.",
-        f"{now} {hostname} systemd[1]: Finished systemd-poweroff.service - System Power Off.",
-        f"{now} {hostname} systemd[1]: Reached target poweroff.target - System Power Off.",
-        f"{now} {hostname} systemd[1]: Shutting down.",
-        f"{now} {hostname} systemd-shutdown[1]: Syncing filesystems and block devices.",
-        f"{now} {hostname} systemd-shutdown[1]: Sending SIGTERM to remaining processes...",
-        f"{now} {hostname} systemd-journald[258]: Received SIGTERM from PID 1 (systemd-shutdow).",
-        f"{now} {hostname} systemd-journald[258]: Journal stopped"
+    ok_prefix = f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}"
+    
+    logs = [
+        "Stopping Network Time Synchronization...",
+        "Stopping Update UTMP about System Boot/Shutdown...",
+        f"{ok_prefix}Stopped Entropy daemon using the HAVEGE algorithm.{RST}",
+        "Stopping Load/Save Random Seed...",
+        f"{ok_prefix}Stopped Network Time Synchronization.{RST}",
+        f"{ok_prefix}Stopped Update UTMP about System Boot/Shutdown.{RST}",
+        f"{ok_prefix}Stopped Create Volatile Files and Directories.{RST}",
+        f"{ok_prefix}Stopped target Local File Systems.{RST}",
+        "Unmounting /boot/efi...",
+        "Unmounting /media/Data...",
+        "Unmounting /dev/discord/bot-env...",
+        "Unmounting Mount unit for roomba-daemon, revision 10958...",
+        f"{ok_prefix}Stopped Load/Save Random Seed.{RST}",
+        f"{ok_prefix}Unmounted /boot/efi.{RST}",
+        f"{ok_prefix}Unmounted /media/Data.{RST}",
+        f"{ok_prefix}Unmounted /dev/discord/bot-env.{RST}",
+        f"{ok_prefix}Unmounted Mount unit for roomba-daemon, revision 10958.{RST}",
+        f"{ok_prefix}Stopped File System Check on /dev/disk/by-uuid/D4E3-641F.{RST}",
+        f"{ok_prefix}Removed slice system-systemd\\x2dfsck.slice.{RST}",
+        f"{ok_prefix}Stopped target Local File Systems (Pre).{RST}",
+        f"{ok_prefix}Stopped target Swap.{RST}",
+        "Deactivating swap /swapfile...",
+        f"{ok_prefix}Stopped Create Static Device Nodes in /dev.{RST}",
+        f"{ok_prefix}Stopped Create System Users.{RST}",
+        f"{ok_prefix}Deactivated swap /swapfile.{RST}",
+        f"{ok_prefix}Reached target Unmount All Filesystems.{RST}",
+        f"{ok_prefix}Stopped Remount Root and Kernel File Systems.{RST}",
+        f"{ok_prefix}Reached target Shutdown.{RST}",
+        f"{ok_prefix}Reached target Final Step.{RST}",
+        f"{ok_prefix}Finished Power-Off.{RST}",
+        f"{ok_prefix}Reached target Power-Off.{RST}"
     ]
-    
-    print("\nInitiating System Shutdown Sequence...", flush=True)
-    for log in shutdown_logs:
-        time.sleep(0.02)
-        print(log, flush=True)
 
-def print_normal_boot_sequence():
-    """Ubuntu 24.04 LTS (Noble Numbat) 起動 (dmesg) ログの模倣"""
+    print("\nInitiating System Shutdown Sequence...", flush=True)
+    for line in logs:
+        time.sleep(0.015)
+        print(line, flush=True)
+
+    # 最後の systemd-shutdown タイムスタンプ表示（画像一番下スタイル）
+    uptime_sec = round(random.uniform(30000, 40000), 6)
+    print(f"{WHT}[{uptime_sec:12.6f}] systemd-shutdown[1]: Syncing filesystems and block devices.{RST}", flush=True)
+    print(f"{WHT}[{uptime_sec + 0.000120:12.6f}] systemd-shutdown[1]: Powering off.{RST}\n", flush=True)
+
+def print_normal_boot_sequence(RST, WHT, GRN):
+    """Ubuntu 24.04 LTS (Noble Numbat) Boot ログ"""
     now = datetime.now().strftime("%b %d %H:%M:%S")
     hostname = "ubuntu"
     boot_id = "".join(random.choices("0123456789abcdef", k=32))
@@ -42,8 +68,8 @@ def print_normal_boot_sequence():
     print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x000000000009b400-0x000000000009ffff] reserved", flush=True)
     print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000100000-0x000000000fffffff] usable", flush=True)
     print(f"{now} {hostname} kernel: EXT4-fs (discord-bot-env): mounted filesystem with ordered data mode.", flush=True)
-    print(f"{now} {hostname} systemd[1]: Started Roomba Control Daemon Service.", flush=True)
-    print(f"{now} {hostname} systemd[1]: Connected to Discord Gateway Websocket.", flush=True)
+    print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Started Roomba Control Daemon Service.{RST}", flush=True)
+    print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Connected to Discord Gateway Websocket.{RST}", flush=True)
 
 def main():
     step_outcome = os.getenv("STEP_OUTCOME", "")
@@ -68,21 +94,24 @@ def main():
     else:
         outcome = "success"
 
+    RST = "\033[0m"
+    WHT = "\033[37m"
+    GRN = "\033[32m"
+
     print("::group::Execution Log Summary & System Status", flush=True)
 
     # 1. 正常終了
     if outcome == "success":
-        print_normal_boot_sequence()
-        print_systemd_shutdown()
+        print_normal_boot_sequence(RST, WHT, GRN)
+        print_systemd_shutdown_ok(RST, WHT, GRN)
         print("::endgroup::", flush=True)
         sys.exit(0)
 
-    # 2. 実行キャンセル（OK判定で正常終了）
+    # 2. 実行キャンセル（[ OK ] 付与でクリーンシャットダウンし exit 0）
     elif outcome == "cancelled":
-        now = datetime.now().strftime("%b %d %H:%M:%S")
-        print_normal_boot_sequence()
-        print(f"{now} ubuntu systemd[1]: Stopping Roomba Control Daemon Service (SIGTERM requested)...", flush=True)
-        print_systemd_shutdown()
+        print_normal_boot_sequence(RST, WHT, GRN)
+        print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Stopped Roomba Control Daemon Service (SIGTERM/SIGINT processed).{RST}", flush=True)
+        print_systemd_shutdown_ok(RST, WHT, GRN)
         print("::endgroup::", flush=True)
         sys.exit(0)
 
