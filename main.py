@@ -6,20 +6,24 @@ import sys
 import time
 import traceback
 import unicodedata
+from datetime import datetime
 import discord
 from discord.ext import commands
+
+
 # ==================================================
-# --- Debian風 ＆ Kernel Panic システムログユーティリティ ---
+# --- Ubuntu風 ＆ Kernel Panic システムログユーティリティ ---
 # ==================================================
-#raise RuntimeError("roomba_bot_main_crash")　#クラッシュのテスト用※通常運用する場合は必ずシャープ（#）つけること
-def log_debian_ok(message: str):
-    """Debianの [  OK  ] ログを表示"""
+# raise RuntimeError("roomba_bot_main_crash")  # クラッシュのテスト用※通常運用する場合は必ずシャープ（#）つけること
+
+def log_ubuntu_ok(message: str):
+    """Ubuntu/Debianの [  OK  ] ログを表示"""
     print(f"[  \033[1;32mOK\033[0m  ] {message}")
     sys.stdout.flush()
 
-async def log_debian_working(message: str, duration: float = 1.8):
+async def log_ubuntu_working(message: str, duration: float = 1.8):
     """
-    Debian風 [****] バウンシング（跳ね返り）アニメーション
+    Ubuntu/Debian風 [****] バウンシング（跳ね返り）アニメーション
     """
     width = 7
     pat_len = 4
@@ -43,22 +47,33 @@ async def log_debian_working(message: str, duration: float = 1.8):
     sys.stdout.write(f"\r[  \033[1;32mOK\033[0m  ] {message}\n")
     sys.stdout.flush()
 
-def show_debian_boot_banner():
-    """起動時の Debian 風システムログ"""
-    print("\nLinux roomba-bot 6.1.0-18-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.76-1 x86_64\n")
-    log_debian_ok("Created slice System Slice.")
-    log_debian_ok("Starting Roomba Control Daemon...")
-    log_debian_ok("Mounted /dev/discord/bot-env.")
+def show_ubuntu_boot_banner():
+    """起動時の Ubuntu 24.04 LTS 風システム Boot ログ"""
+    now = datetime.now().strftime("%b %d %H:%M:%S")
+    hostname = "ubuntu"
+    boot_id = "".join(random.choices("0123456789abcdef", k=32))
 
-async def show_debian_shutdown_sequence():
-    """停止時の Debian 風シャットダウンアニメーション ＆ ログ"""
+    print(f"\n-- Boot {boot_id} --", flush=True)
+    print(f"{now} {hostname} kernel: microcode: microcode updated early to revision 0x22, date = 2024-01-15", flush=True)
+    print(f"{now} {hostname} kernel: Linux version 6.8.0-1015-azure (buildd@bos03-amd64-001) (x86_64-linux-gnu-gcc-13) #18-Ubuntu SMP PREEMPT_DYNAMIC", flush=True)
+    print(f"{now} {hostname} kernel: Command line: BOOT_IMAGE=/boot/vmlinuz-6.8.0-1015-azure root=/dev/discord/bot-env ro quiet splash", flush=True)
+    print(f"{now} {hostname} kernel: BIOS-provided physical RAM map:", flush=True)
+    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000000000-0x000000000009b3ff] usable", flush=True)
+    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x000000000009b400-0x000000000009ffff] reserved", flush=True)
+    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000100000-0x000000000fffffff] usable", flush=True)
+    print(f"{now} {hostname} kernel: EXT4-fs (discord-bot-env): mounted filesystem with ordered data mode.", flush=True)
+    log_ubuntu_ok("Started Roomba Control Daemon Service.")
+    log_ubuntu_ok("Mounted /dev/discord/bot-env.")
+
+async def show_ubuntu_shutdown_sequence():
+    """停止時の Ubuntu/Debian 風シャットダウンアニメーション ＆ ログ"""
     print("\n")
-    await log_debian_working("Stopping Roomba Control Daemon...", duration=1.2)
-    log_debian_ok("Closed Discord Gateway Socket.")
-    log_debian_ok("Unmounted /dev/discord/bot-env.")
-    log_debian_ok("Stopped target Local File Systems.")
-    log_debian_ok("Reached target System Shutdown.")
-    log_debian_ok("Finished Power-Off.")
+    await log_ubuntu_working("Stopping Roomba Control Daemon...", duration=1.2)
+    log_ubuntu_ok("Closed Discord Gateway Socket.")
+    log_ubuntu_ok("Unmounted /dev/discord/bot-env.")
+    log_ubuntu_ok("Stopped target Local File Systems.")
+    log_ubuntu_ok("Reached target System Shutdown.")
+    log_ubuntu_ok("Finished Power-Off.")
     print("[  \033[1;32mOK\033[0m  ] Reached target Power-Off.\n")
     sys.stdout.flush()
 
@@ -66,7 +81,7 @@ def trigger_kernel_panic(exc_type, exc_value, exc_traceback):
     """異常終了時に Kernel Panic 画面を出力する"""
     print("\n")
     print("\033[1;31m[    0.000000] Kernel panic - not syncing: Fatal exception in interrupt\033[0m")
-    print(f"[    0.000005] CPU: 0 PID: 1 Comm: roomba-bot Tainted: G        W          6.1.0-18-amd64")
+    print(f"[    0.000005] CPU: 0 PID: 1 Comm: roomba-bot Tainted: G        W          6.8.0-1015-azure")
     print(f"[    0.000010] Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.15.0-1")
     print(f"[    0.000015] Call Trace:")
     print(f"[    0.000020]  <TASK>")
@@ -186,9 +201,10 @@ async def scheduled_graceful_shutdown(delay: int):
 
 @bot.event
 async def on_ready():
-    show_debian_boot_banner()
-    await log_debian_working(f"Starting Discord Bot Service for {bot.user}...", duration=2.0)
-    log_debian_ok("Reached target Multi-User System / Ready for prey.")
+    show_ubuntu_boot_banner()
+    await log_ubuntu_working(f"Starting Discord Bot Service for {bot.user}...", duration=2.0)
+    log_ubuntu_ok("Connected to Discord Gateway Websocket.")
+    log_ubuntu_ok("Reached target Multi-User System / Ready for prey.")
     bot.loop.create_task(scheduled_graceful_shutdown(LIFETIME_SECONDS))
 
 @bot.event
@@ -221,9 +237,9 @@ async def on_message(message: discord.Message):
 
         try:
             await message.author.send(dm_notice)
-            log_debian_ok(f"Sent prey notification DM to {message.author}")
+            log_ubuntu_ok(f"Sent prey notification DM to {message.author}")
         except discord.Forbidden:
-            log_debian_ok(f"DM closed for {message.author}. Proceeding directly to ban.")
+            log_ubuntu_ok(f"DM closed for {message.author}. Proceeding directly to ban.")
         except discord.HTTPException as e:
             print(f"[ \033[1;31mFAILED\033[0m ] DM Error: {e}")
 
@@ -257,7 +273,7 @@ async def on_message(message: discord.Message):
                 
                 await record_channel.send(embed=embed)
 
-            log_debian_ok(f"Banned user {message.author} successfully.")
+            log_ubuntu_ok(f"Banned user {message.author} successfully.")
 
         except discord.Forbidden:
             raw_err_msg = "【エラー】捕食しようとしましたが、権限が足りず食べ残してしまいました（BOTより権限が高いか同等です）。"
@@ -277,7 +293,7 @@ async def on_message(message: discord.Message):
                 clean_text = bite_text(raw_clean_text, chance=0.25)
                 clean_msg = await message.channel.send(clean_text)
                 await clean_msg.delete(delay=5)
-                log_debian_ok(f"Cleaned message from {message.author}")
+                log_ubuntu_ok(f"Cleaned message from {message.author}")
             except discord.Forbidden:
                 pass
             except discord.HTTPException as e:
@@ -321,7 +337,7 @@ async def main():
 
     # シャットダウンイベントが検知された場合
     if shutdown_event.is_set():
-        await show_debian_shutdown_sequence()
+        await show_ubuntu_shutdown_sequence()
         await bot.close()
 
     # 残りのタスクをキャンセル＆クリーンアップ
