@@ -14,15 +14,18 @@ from discord.ext import commands
 # ==================================================
 # --- Ubuntu風 ＆ Kernel Panic システムログユーティリティ ---
 # ==================================================
-# raise RuntimeError("roomba_bot_main_crash")  # クラッシュのテスト用※通常運用する場合は必ずシャープ（#）をつけること。これを忘れるとエラーで止まる
 
 def log_ubuntu_ok(message: str):
     """Ubuntu/Debianの [  OK  ] ログを表示"""
     print(f"[  \033[1;32mOK\033[0m  ] {message}", flush=True)
 
+def log_ubuntu_failed(message: str):
+    """エラー時に Kernel Panic せず障害ログのみを出力（Botは継続）"""
+    print(f"[ \033[1;31mFAILED\033[0m ] {message}", flush=True)
+
 async def log_ubuntu_working(message: str, duration: float = 1.8):
     """
-    Ubuntu/Debian風 [****] バウンシング（跳ね返り）アニメーション
+    Ubuntu/Debian風 [****] バウンシングアニメーション
     """
     width = 7
     pat_len = 4
@@ -65,7 +68,7 @@ def show_ubuntu_boot_banner():
     log_ubuntu_ok("Mounted /dev/discord/bot-env.")
 
 async def show_ubuntu_shutdown_sequence():
-    """停止時の Ubuntu/Debian 風シャットダウンアニメーション ＆ ログ"""
+    """停止時の Ubuntu 風シャットダウンアニメーション ＆ ログ"""
     print("\n", flush=True)
     await log_ubuntu_working("Stopping Roomba Control Daemon...", duration=1.2)
     log_ubuntu_ok("Closed Discord Gateway Socket.")
@@ -76,9 +79,9 @@ async def show_ubuntu_shutdown_sequence():
     print("[  \033[1;32mOK\033[0m  ] Reached target Power-Off.\n", flush=True)
 
 def trigger_kernel_panic(exc_type, exc_value, exc_traceback):
-    """異常終了時に Kernel Panic 画面を出力する"""
+    """通信不能・致命的エラー時のみ呼び出される Kernel Panic 画面"""
     print("\n", flush=True)
-    print("\033[1;31m[    0.000000] Kernel panic - not syncing: Fatal exception in interrupt\033[0m", flush=True)
+    print("\033[1;31m[    0.000000] Kernel panic - not syncing: Fatal network/gateway communication failure\033[0m", flush=True)
     print(f"[    0.000005] CPU: 0 PID: 1 Comm: roomba-bot Tainted: G        W          6.8.0-1015-azure", flush=True)
     print(f"[    0.000010] Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.15.0-1", flush=True)
     print(f"[    0.000015] Call Trace:", flush=True)
@@ -92,9 +95,6 @@ def trigger_kernel_panic(exc_type, exc_value, exc_traceback):
     print(f"[    0.000030]  </TASK>", flush=True)
     print(f"[    0.000035] Kernel Offset: disabled", flush=True)
     print(f"[    0.000040] ---[ end Kernel panic - not syncing: {exc_type.__name__}: {exc_value} ]---\033[0m\n", flush=True)
-
-# 未捕獲例外をカーネルパニックにフック
-sys.excepthook = trigger_kernel_panic
 
 
 # ==================================================
@@ -177,7 +177,7 @@ def bite_text(text: str, chance: float = 0.25) -> str:
             "……あ、コホン！……違います、です！",
             "……っ！……じゃなくて、です！",
             "……噛みました。……ゲホン、です！",
-            "……あふっ！……気を取り直して, です！",
+            "……あふっ！……気を取り直して、です！",
             "……〜〜〜っ！……噛んでないです、です！"
         ]
         bitten += f" {random.choice(fix_phrases)}"
@@ -202,6 +202,11 @@ async def on_ready():
     log_ubuntu_ok("Connected to Discord Gateway Websocket.")
     log_ubuntu_ok("Reached target Multi-User System / Ready for prey.")
     bot.loop.create_task(scheduled_graceful_shutdown(LIFETIME_SECONDS))
+
+@bot.event
+async def on_error(event, *args, **kwargs):
+    """イベント処理中（on_message等）の未捕獲エラーハンドラ（パニックさせず継続）"""
+    log_ubuntu_failed(f"Unhandled error in event '{event}'. System running continuously.")
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -237,7 +242,7 @@ async def on_message(message: discord.Message):
         except discord.Forbidden:
             log_ubuntu_ok(f"DM closed for {message.author}. Proceeding directly to ban.")
         except discord.HTTPException as e:
-            print(f"[ \033[1;31mFAILED\033[0m ] DM Error: {e}", flush=True)
+            log_ubuntu_failed(f"DM Error: {e}")
 
         try:
             reason_words = ", ".join(detected_ban_words)
@@ -276,7 +281,7 @@ async def on_message(message: discord.Message):
             err_msg = bite_text(raw_err_msg, chance=0.35)
             await message.channel.send(err_msg)
         except discord.HTTPException as e:
-            await message.channel.send(f"【エラー】捕食処理に失敗しました: {e}")
+            log_ubuntu_failed(f"Ban action failed: {e}")
 
         return
 
@@ -293,7 +298,7 @@ async def on_message(message: discord.Message):
             except discord.Forbidden:
                 pass
             except discord.HTTPException as e:
-                print(f"[ \033[1;31mFAILED\033[0m ] Delete Error: {e}", flush=True)
+                log_ubuntu_failed(f"Clean action failed: {e}")
             return
 
     await bot.process_commands(message)
@@ -306,14 +311,13 @@ async def on_message(message: discord.Message):
 async def main():
     token = os.getenv("DISCORD_TOKEN")
     if not token:
-        raise ValueError("DISCORD_TOKEN environment variable is not set")
+        # トークン欠損は即時 Kernel Panic
+        raise ValueError("DISCORD_TOKEN environment variable is not set (Critical)")
 
-    # ★ プログラム起動直後（ネットワーク接続前）に Boot ログを強制出力
     show_ubuntu_boot_banner()
 
     loop = asyncio.get_running_loop()
 
-    # シグナルハンドラからはフラグを立てるだけ（安全）
     def signal_handler():
         shutdown_event.set()
 
@@ -321,25 +325,20 @@ async def main():
         try:
             loop.add_signal_handler(sig, signal_handler)
         except NotImplementedError:
-            # Windows環境などのバックアップ
             signal.signal(sig, lambda s, f: shutdown_event.set())
 
-    # Bot起動タスクとシャットダウン監視タスクを並列実行
     bot_task = asyncio.create_task(bot.start(token))
     shutdown_task = asyncio.create_task(shutdown_event.wait())
 
-    # いずれかのイベントが発生するまで待機
     done, pending = await asyncio.wait(
         [bot_task, shutdown_task],
         return_when=asyncio.FIRST_COMPLETED
     )
 
-    # シャットダウンイベントが検知された場合
     if shutdown_event.is_set():
         await show_ubuntu_shutdown_sequence()
         await bot.close()
 
-    # 残りのタスクをキャンセル＆クリーンアップ
     for task in pending:
         task.cancel()
         try:
@@ -347,7 +346,7 @@ async def main():
         except asyncio.CancelledError:
             pass
 
-    # bot_task で例外が起きていた場合は再スローして Kernel Panic を発火させる
+    # 通信切断 / ログイン失敗などの致命的エラー時のみ例外をスローして Panic
     if bot_task in done and bot_task.exception():
         raise bot_task.exception()
 
@@ -358,5 +357,6 @@ if __name__ == "__main__":
     except (KeyboardInterrupt, SystemExit):
         sys.exit(0)
     except Exception as e:
+        # 通信不能・起動不能などの「致命的障害」でのみ Kernel Panic を発生させる
         trigger_kernel_panic(type(e), e, e.__traceback__)
         sys.exit(1)
