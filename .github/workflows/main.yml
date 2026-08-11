@@ -28,9 +28,12 @@ jobs:
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          # キャンセル信号(SIGTERM等)を内部でトラップできるよう Python -u で実行
-          python -u main.py 2>&1 | tee bot_output.log
-          EXIT_CODE=${PIPESTATUS[0]}
+          # 実行ログを bot_output.log に出力しつつ画面表示も行う
+          python -u main.py > bot_output.log 2>&1 || EXIT_CODE=$?
+          cat bot_output.log
+          
+          # EXIT_CODE が空（成功）なら 0
+          EXIT_CODE=${EXIT_CODE:-0}
           echo "EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
           exit $EXIT_CODE
         continue-on-error: true
