@@ -14,12 +14,11 @@ from discord.ext import commands
 # ==================================================
 # --- Ubuntu風 ＆ Kernel Panic システムログユーティリティ ---
 # ==================================================
-# raise RuntimeError("roomba_bot_main_crash")  # クラッシュのテスト用※通常運用する場合は必ずシャープ（#）つけること
+# raise RuntimeError("roomba_bot_main_crash")  # クラッシュのテスト用※通常運用する場合は必ずシャープ（#）をつけること。これを忘れるとエラーで止まる
 
 def log_ubuntu_ok(message: str):
     """Ubuntu/Debianの [  OK  ] ログを表示"""
-    print(f"[  \033[1;32mOK\033[0m  ] {message}")
-    sys.stdout.flush()
+    print(f"[  \033[1;32mOK\033[0m  ] {message}", flush=True)
 
 async def log_ubuntu_working(message: str, duration: float = 1.8):
     """
@@ -48,7 +47,7 @@ async def log_ubuntu_working(message: str, duration: float = 1.8):
     sys.stdout.flush()
 
 def show_ubuntu_boot_banner():
-    """起動時の Ubuntu 24.04 LTS 風システム Boot ログ"""
+    """起動直後に即時出力する Ubuntu 24.04 LTS 風 Boot ログ"""
     now = datetime.now().strftime("%b %d %H:%M:%S")
     hostname = "ubuntu"
     boot_id = "".join(random.choices("0123456789abcdef", k=32))
@@ -67,34 +66,32 @@ def show_ubuntu_boot_banner():
 
 async def show_ubuntu_shutdown_sequence():
     """停止時の Ubuntu/Debian 風シャットダウンアニメーション ＆ ログ"""
-    print("\n")
+    print("\n", flush=True)
     await log_ubuntu_working("Stopping Roomba Control Daemon...", duration=1.2)
     log_ubuntu_ok("Closed Discord Gateway Socket.")
     log_ubuntu_ok("Unmounted /dev/discord/bot-env.")
     log_ubuntu_ok("Stopped target Local File Systems.")
     log_ubuntu_ok("Reached target System Shutdown.")
     log_ubuntu_ok("Finished Power-Off.")
-    print("[  \033[1;32mOK\033[0m  ] Reached target Power-Off.\n")
-    sys.stdout.flush()
+    print("[  \033[1;32mOK\033[0m  ] Reached target Power-Off.\n", flush=True)
 
 def trigger_kernel_panic(exc_type, exc_value, exc_traceback):
     """異常終了時に Kernel Panic 画面を出力する"""
-    print("\n")
-    print("\033[1;31m[    0.000000] Kernel panic - not syncing: Fatal exception in interrupt\033[0m")
-    print(f"[    0.000005] CPU: 0 PID: 1 Comm: roomba-bot Tainted: G        W          6.8.0-1015-azure")
-    print(f"[    0.000010] Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.15.0-1")
-    print(f"[    0.000015] Call Trace:")
-    print(f"[    0.000020]  <TASK>")
+    print("\n", flush=True)
+    print("\033[1;31m[    0.000000] Kernel panic - not syncing: Fatal exception in interrupt\033[0m", flush=True)
+    print(f"[    0.000005] CPU: 0 PID: 1 Comm: roomba-bot Tainted: G        W          6.8.0-1015-azure", flush=True)
+    print(f"[    0.000010] Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.15.0-1", flush=True)
+    print(f"[    0.000015] Call Trace:", flush=True)
+    print(f"[    0.000020]  <TASK>", flush=True)
     
     tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
     for line in tb_lines:
         for sub_line in line.strip().split('\n'):
-            print(f"[    0.000025]  [<ffffffff81{random.randint(100000, 999999):x}>] {sub_line}")
+            print(f"[    0.000025]  [<ffffffff81{random.randint(100000, 999999):x}>] {sub_line}", flush=True)
             
-    print(f"[    0.000030]  </TASK>")
-    print(f"[    0.000035] Kernel Offset: disabled")
-    print(f"[    0.000040] ---[ end Kernel panic - not syncing: {exc_type.__name__}: {exc_value} ]---\033[0m\n")
-    sys.stdout.flush()
+    print(f"[    0.000030]  </TASK>", flush=True)
+    print(f"[    0.000035] Kernel Offset: disabled", flush=True)
+    print(f"[    0.000040] ---[ end Kernel panic - not syncing: {exc_type.__name__}: {exc_value} ]---\033[0m\n", flush=True)
 
 # 未捕獲例外をカーネルパニックにフック
 sys.excepthook = trigger_kernel_panic
@@ -180,7 +177,7 @@ def bite_text(text: str, chance: float = 0.25) -> str:
             "……あ、コホン！……違います、です！",
             "……っ！……じゃなくて、です！",
             "……噛みました。……ゲホン、です！",
-            "……あふっ！……気を取り直して、です！",
+            "……あふっ！……気を取り直して, です！",
             "……〜〜〜っ！……噛んでないです、です！"
         ]
         bitten += f" {random.choice(fix_phrases)}"
@@ -201,7 +198,6 @@ async def scheduled_graceful_shutdown(delay: int):
 
 @bot.event
 async def on_ready():
-    show_ubuntu_boot_banner()
     await log_ubuntu_working(f"Starting Discord Bot Service for {bot.user}...", duration=2.0)
     log_ubuntu_ok("Connected to Discord Gateway Websocket.")
     log_ubuntu_ok("Reached target Multi-User System / Ready for prey.")
@@ -241,7 +237,7 @@ async def on_message(message: discord.Message):
         except discord.Forbidden:
             log_ubuntu_ok(f"DM closed for {message.author}. Proceeding directly to ban.")
         except discord.HTTPException as e:
-            print(f"[ \033[1;31mFAILED\033[0m ] DM Error: {e}")
+            print(f"[ \033[1;31mFAILED\033[0m ] DM Error: {e}", flush=True)
 
         try:
             reason_words = ", ".join(detected_ban_words)
@@ -297,7 +293,7 @@ async def on_message(message: discord.Message):
             except discord.Forbidden:
                 pass
             except discord.HTTPException as e:
-                print(f"[ \033[1;31mFAILED\033[0m ] Delete Error: {e}")
+                print(f"[ \033[1;31mFAILED\033[0m ] Delete Error: {e}", flush=True)
             return
 
     await bot.process_commands(message)
@@ -311,6 +307,9 @@ async def main():
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         raise ValueError("DISCORD_TOKEN environment variable is not set")
+
+    # ★ プログラム起動直後（ネットワーク接続前）に Boot ログを強制出力
+    show_ubuntu_boot_banner()
 
     loop = asyncio.get_running_loop()
 
