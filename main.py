@@ -8,11 +8,10 @@ import traceback
 import unicodedata
 import discord
 from discord.ext import commands
-import non_existent_module_test
 # ==================================================
 # --- Debian風 ＆ Kernel Panic システムログユーティリティ ---
 # ==================================================
-
+raise RuntimeError("roomba_bot_main_crash")　#クラッシュのテスト用
 def log_debian_ok(message: str):
     """Debianの [  OK  ] ログを表示"""
     print(f"[  \033[1;32mOK\033[0m  ] {message}")
