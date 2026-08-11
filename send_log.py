@@ -23,21 +23,12 @@ def print_shutdown_sequence(RST, WHT, GRN, YEL):
 
     print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Stopped All Background Services.{RST}", flush=True)
     print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Reached Target System Power-Off / Runner Exit.{RST}\n", flush=True)
-    print("=" * 60 + "\n", flush=True)
 
 def main():
     step_outcome = os.getenv("STEP_OUTCOME", "")
     step_conclusion = os.getenv("STEP_CONCLUSION", "")
-    
-    # キャンセル判定の強化
-    if step_conclusion == "cancelled" or step_outcome == "cancelled":
-        outcome = "cancelled"
-    elif step_conclusion == "success" or step_outcome == "success":
-        outcome = "success"
-    else:
-        outcome = "failure"
+    exit_code_str = os.getenv("BOT_EXIT_CODE", "0")
 
-    exit_code_str = os.getenv("BOT_EXIT_CODE", "1")
     try:
         exit_code = int(exit_code_str)
     except ValueError:
@@ -48,7 +39,14 @@ def main():
         with open("bot_output.log", "r", encoding="utf-8", errors="ignore") as f:
             log_content = f.read()
 
-    # ANSI Color Codes
+    # STEP_OUTCOME か EXIT_CODE からエラー・キャンセルを判断
+    if step_conclusion == "cancelled" or step_outcome == "cancelled":
+        outcome = "cancelled"
+    elif exit_code != 0 or "Traceback" in log_content or "Error" in log_content:
+        outcome = "failure"
+    else:
+        outcome = "success"
+
     RST = "\033[0m"
     WHT = "\033[37m"
     RED = "\033[31m"
@@ -57,18 +55,15 @@ def main():
 
     print("::group::Execution Log Summary & Shutdown Processing", flush=True)
 
-    # 1. 正常終了
     if outcome == "success":
         print(f"{WHT}[{RST} {GRN} OK {RST}{WHT}]{RST} {WHT}Roomba Control Daemon completed execution without errors.{RST}", flush=True)
         print_shutdown_sequence(RST, WHT, GRN, YEL)
 
-    # 2. キャンセル（手動停止など）
     elif outcome == "cancelled":
         print(f"{WHT}[{RST} {YEL}****{RST}{WHT}]{RST} {WHT}Roomba Control Daemon execution cancelled by user or runner.{RST}", flush=True)
         print(f"{WHT}[{RST} {YEL} WARN {RST}{WHT}]{RST} {WHT}SIGTERM/SIGINT received. Safe cancellation sequence initiated.{RST}", flush=True)
         print_shutdown_sequence(RST, WHT, GRN, YEL)
 
-    # 3. エラー発生（Kernel panic風出力＋シャットダウン処理）
     else:
         if "SyntaxError" in log_content or "IndentationError" in log_content:
             err_module = "PyParser_ASTFromFileObject"
@@ -101,7 +96,6 @@ def main():
         print(f"{WHT}[{RST}{RED} FAILED {RST}{WHT}]{RST} {WHT}Failed to start Roomba Control Daemon service.{RST}", flush=True)
         print(f"{WHT}EXT4-fs error: inode #{rnd_ino}, block {rnd_blk}: core dump registered{RST}", flush=True)
 
-        # エラー発生時でも安全に落とすシーケンスを走らせる
         print_shutdown_sequence(RST, WHT, GRN, YEL)
 
     print("::endgroup::", flush=True)
