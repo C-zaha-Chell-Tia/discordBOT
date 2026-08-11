@@ -11,7 +11,7 @@ from discord.ext import commands
 # ==================================================
 # --- Debian風 ＆ Kernel Panic システムログユーティリティ ---
 # ==================================================
-raise RuntimeError("roomba_bot_main_crash")　#クラッシュのテスト用
+#raise RuntimeError("roomba_bot_main_crash")　#クラッシュのテスト用※通常運用する場合は必ずシャープ（#）つけること
 def log_debian_ok(message: str):
     """Debianの [  OK  ] ログを表示"""
     print(f"[  \033[1;32mOK\033[0m  ] {message}")
