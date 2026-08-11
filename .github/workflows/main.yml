@@ -24,8 +24,21 @@ jobs:
           pip install discord.py
 
       - name: Run Discord Bot
+        id: run_bot
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          # ログは外部へ送信せず、GitHub Actions の画面上のみに出力します
-          python -u main.py
+          # キャンセル信号(SIGTERM等)を内部でトラップできるよう Python -u で実行
+          python -u main.py 2>&1 | tee bot_output.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
+          exit $EXIT_CODE
+        continue-on-error: true
+
+      - name: Execute Shutdown & Record Processing Log
+        if: always() # キャンセル（SIGINT/SIGTERM）やエラー時でも必ず実行する
+        env:
+          STEP_OUTCOME: ${{ steps.run_bot.outcome }}
+          STEP_CONCLUSION: ${{ steps.run_bot.conclusion }}
+          BOT_EXIT_CODE: ${{ env.EXIT_CODE }}
+        run: python send_log.py
