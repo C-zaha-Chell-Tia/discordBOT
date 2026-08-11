@@ -24,22 +24,8 @@ jobs:
           pip install discord.py
 
       - name: Run Discord Bot
-        id: run_bot
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          python main.py > bot_output.log 2>&1
-          EXIT_CODE=$?
-          echo "EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
-          exit $EXIT_CODE
-        continue-on-error: true
-
-      - name: Send Notification to Discord
-        if: always()
-        env:
-          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          LOG_CHANNEL_ID: "1531955600819359808"
-          STEP_OUTCOME: ${{ steps.run_bot.outcome }}
-          STEP_CONCLUSION: ${{ steps.run_bot.conclusion }}
-          BOT_EXIT_CODE: ${{ env.EXIT_CODE }}
-        run: python send_log.py
+          # ログは外部へ送信せず、GitHub Actions の画面上のみに出力します
+          python -u main.py
