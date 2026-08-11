@@ -8,7 +8,7 @@ import traceback
 import unicodedata
 import discord
 from discord.ext import commands
-sys.exit(3)
+sys.exit(2)
 # ==================================================
 # --- Debian風 ＆ Kernel Panic システムログユーティリティ ---
 # ==================================================
