@@ -1,320 +1,288 @@
 import asyncio
 import os
-import random
+import re
 import signal
 import sys
-import time
-import traceback
-import unicodedata
 from datetime import datetime
+import aiohttp
+from aiohttp import web
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
-
-# ==================================================
-# --- Ubuntu風 ＆ Kernel Panic システムログユーティリティ ---
-# ==================================================
-
-def log_ubuntu_ok(message: str):
-    """Ubuntu/Debianの [  OK  ] ログを表示"""
-    print(f"[  \033[1;32mOK\033[0m  ] {message}", flush=True)
-
-def log_ubuntu_failed(message: str):
-    """エラー時に Kernel Panic せず障害ログのみを出力（Botは継続）"""
-    print(f"[ \033[1;31mFAILED\033[0m ] {message}", flush=True)
-
-async def log_ubuntu_working(message: str, duration: float = 1.8):
-    """
-    Ubuntu/Debian風 [****] バウンシングアニメーション
-    """
-    width = 7
-    pat_len = 4
-    max_pos = width - pat_len
-    
-    pos = 0
-    direction = 1
-    end_time = time.time() + duration
-    
-    while time.time() < end_time:
-        pattern = " " * pos + "*" * pat_len + " " * (max_pos - pos)
-        sys.stdout.write(f"\r[ \033[1;33m{pattern}\033[0m ] {message}")
-        sys.stdout.flush()
-        
-        await asyncio.sleep(0.08)
-        
-        pos += direction
-        if pos >= max_pos or pos <= 0:
-            direction *= -1
-    
-    sys.stdout.write(f"\r[  \033[1;32mOK\033[0m  ] {message}\n")
-    sys.stdout.flush()
-
-def show_ubuntu_boot_banner():
-    """起動直後に即時出力する Ubuntu 24.04 LTS 風 Boot ログ"""
-    now = datetime.now().strftime("%b %d %H:%M:%S")
-    hostname = "ubuntu"
-    boot_id = "".join(random.choices("0123456789abcdef", k=32))
-
-    print(f"\n-- Boot {boot_id} --", flush=True)
-    print(f"{now} {hostname} kernel: microcode: microcode updated early to revision 0x22, date = 2024-01-15", flush=True)
-    print(f"{now} {hostname} kernel: Linux version 6.8.0-1015-azure (buildd@bos03-amd64-001) (x86_64-linux-gnu-gcc-13) #18-Ubuntu SMP PREEMPT_DYNAMIC", flush=True)
-    print(f"{now} {hostname} kernel: Command line: BOOT_IMAGE=/boot/vmlinuz-6.8.0-1015-azure root=/dev/discord/bot-env ro quiet splash", flush=True)
-    print(f"{now} {hostname} kernel: BIOS-provided physical RAM map:", flush=True)
-    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000000000-0x000000000009b3ff] usable", flush=True)
-    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x000000000009b400-0x000000000009ffff] reserved", flush=True)
-    print(f"{now} {hostname} kernel: BIOS-e820: [mem 0x0000000000100000-0x000000000fffffff] usable", flush=True)
-    print(f"{now} {hostname} kernel: EXT4-fs (discord-bot-env): mounted filesystem with ordered data mode.", flush=True)
-    log_ubuntu_ok("Started Roomba Control Daemon Service.")
-    log_ubuntu_ok("Mounted /dev/discord/bot-env.")
-
-async def show_ubuntu_shutdown_sequence():
-    """停止時の Ubuntu 風シャットダウンアニメーション ＆ ログ"""
-    print("\n", flush=True)
-    await log_ubuntu_working("Stopping Roomba Control Daemon...", duration=1.2)
-    log_ubuntu_ok("Closed Discord Gateway Socket.")
-    log_ubuntu_ok("Unmounted /dev/discord/bot-env.")
-    log_ubuntu_ok("Stopped target Local File Systems.")
-    log_ubuntu_ok("Reached target System Shutdown.")
-    log_ubuntu_ok("Finished Power-Off.")
-    print("[  \033[1;32mOK\033[0m  ] Reached target Power-Off.\n", flush=True)
-
-def trigger_kernel_panic(exc_type, exc_value, exc_traceback):
-    """通信不能・致命的エラー時のみ呼び出される Kernel Panic 画面"""
-    print("\n", flush=True)
-    print("\033[1;31m[    0.000000] Kernel panic - not syncing: Fatal network/gateway communication failure\033[0m", flush=True)
-    print(f"[    0.000005] CPU: 0 PID: 1 Comm: roomba-bot Tainted: G        W          6.8.0-1015-azure", flush=True)
-    print(f"[    0.000010] Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.15.0-1", flush=True)
-    print(f"[    0.000015] Call Trace:", flush=True)
-    print(f"[    0.000020]  <TASK>", flush=True)
-    
-    tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-    for line in tb_lines:
-        for sub_line in line.strip().split('\n'):
-            print(f"[    0.000025]  [<ffffffff81{random.randint(100000, 999999):x}>] {sub_line}", flush=True)
-            
-    print(f"[    0.000030]  </TASK>", flush=True)
-    print(f"[    0.000035] Kernel Offset: disabled", flush=True)
-    print(f"[    0.000040] ---[ end Kernel panic - not syncing: {exc_type.__name__}: {exc_value} ]---\033[0m\n", flush=True)
-
+import send_log
 
 # ==================================================
-# --- Bot 設定 ＆ ワードリスト ---
+# --- Configuration & Environment Variables ---
 # ==================================================
 
 RECORD_CHANNEL_ID = 1531955600819359808
 LIFETIME_SECONDS = 20700  
+
+# Local PC / LM Studio / Detector Configuration
+DETECTOR_URL = os.getenv("DETECTOR_URL")      # e.g., https://xxxx.ngrok-free.app/game-status
+LM_STUDIO_URL = os.getenv("LM_STUDIO_URL")    # e.g., https://yyyy.ngrok-free.app/v1/chat/completions
+MODEL_NAME = os.getenv("LLM_MODEL_NAME", "rinna/japanese-gpt-neox-3.6b-instruction-ppo")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+
+# Character Persona Configuration
+BOT_CHARACTER_NAME = os.getenv("BOT_CHARACTER_NAME", "Meteorite")
+
+# Operational hours (Suspended between 23:00 and 06:00)
+SLEEP_START_HOUR = 23
+SLEEP_END_HOUR = 6
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-# シャットダウン検知用の非同期フラグ
 shutdown_event = asyncio.Event()
 
-BAN_WORDS = [
-    "野獣先輩", "YJSPY", "yjspy", "やじゅうせんぱい", "ヤジュウセンパイ",
-    "死ね", "タヒね", "しね", "シネ", "殺す", "殺すぞ",
-    "田所浩二", "114514", "114,514", "いいよこいよ", "いいよ！こいよ！",
-    "1919", "810", "114514810"
-]
+# State Management Flags
+is_suspended_by_game = False
+is_suspended_by_time = False
+detected_game_name = ""
+timer_task = None
 
-DELETE_WORDS = [
-    "障害者", "ガイジ", "キチガイ", "きちがい",
-    "ゴミ", "カス", "雑魚", "ざこ", "不細工", "ぶさいく",
-    "頭悪い", "低能", "無能", "語彙力ないね",
-    "何がありがとうなの？", "はい論破",
-    "逝きすぎ", "いきすぎ", "イキすぎ", "イクイク", "いくいく",
-    "ヌッ！", "ぬっ！", "王道を往く", "悔い上げて", 
-    "悔い改めて", "歪みねぇな", "だらしねぇな", "そうだよ（便乗）"
-]
-
-def normalize_text(text: str) -> str:
-    return unicodedata.normalize('NFKC', text).lower()
-
-def bite_text(text: str, chance: float = 0.25) -> str:
-    if random.random() > chance:
-        return text
-
-    replacements = {
-        "でした": ["でひた", "でふた", "でしゅた"],
-        "しました": ["ひました", "しやした", "しまひた"],
-        "ます": ["まふ", "ましゅ", "まつ"],
-        "ごちそうさま": ["ごひちそうさま", "ごちほうさま", "ごちそうしゃま"],
-        "禁止": ["きんひ", "きんしぃ"],
-        "捕食": ["ほほく", "ほふぉく"],
-        "清掃": ["ふぇいそう", "せいそうっ"],
-        "美味しく": ["おいひく", "おひしく"],
-        "食されました": ["たべられまひた", "くわれまひた"],
-        "二度と": ["にろと", "に、二度と"],
-        "ありません": ["ありまひぇん", "ありやせん"],
-        "完了": ["かんりょうっ", "か、完了"],
-        "ルンバ": ["るんばっ", "ル、ルンバ"],
-        "弱肉強食": ["じゃくにくきょうしょくっ", "じゃく、弱肉強食"],
-    }
-
-    bitten = text
-    bitten_flag = False
-
-    for original, changed in replacements.items():
-        if original in bitten:
-            if isinstance(changed, list):
-                bitten = bitten.replace(original, random.choice(changed), 1)
-            else:
-                bitten = bitten.replace(original, changed, 1)
-            bitten_flag = True
-
-    particles = ["は", "が", "を", "に"]
-    for p in particles:
-        if p in bitten and random.random() < 0.3:
-            bitten = bitten.replace(p, f"{p}、{p}", 1)
-            bitten_flag = True
-            break
-
-    if bitten_flag:
-        fix_phrases = [
-            "……あ、コホン！……違います、です！",
-            "……っ！……じゃなくて、です！",
-            "……噛みました。……ゲホン、です！",
-            "……あふっ！……気を取り直して、です！",
-            "……〜〜〜っ！……噛んでないです、です！"
-        ]
-        bitten += f" {random.choice(fix_phrases)}"
-    else:
-        bitten += "……あ、噛みました。"
-
-    return bitten
+# Hook unhandled exceptions to kernel panic handler in send_log
+sys.excepthook = lambda t, v, tb: send_log.trigger_kernel_panic(
+    t, v, tb, token=DISCORD_TOKEN, channel_id=RECORD_CHANNEL_ID
+)
 
 
 # ==================================================
-# --- イベント・タスクハンドラ ---
+# --- Local Log Receiver (Aiohttp Web Server) ---
+# ==================================================
+
+async def handle_local_log(request):
+    try:
+        data = await request.json()
+        log_msg = data.get("log", "")
+        if log_msg:
+            send_log.log_local_detector(log_msg)
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        return web.json_response({"status": "error", "message": str(e)}, status=400)
+
+async def start_log_server():
+    app = web.Application()
+    app.router.add_post('/local-log', handle_local_log)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+    send_log.log_ubuntu_ok("Local log receiver API started on port 8080.")
+
+
+# ==================================================
+# --- Monitor Tasks (Game Detector & Schedule) ---
+# ==================================================
+
+def check_time_sleeping():
+    current_hour = datetime.now().hour
+    if SLEEP_START_HOUR > SLEEP_END_HOUR:
+        return current_hour >= SLEEP_START_HOUR or current_hour < SLEEP_END_HOUR
+    else:
+        return SLEEP_START_HOUR <= current_hour < SLEEP_END_HOUR
+
+@tasks.loop(seconds=30)
+async def monitor_system():
+    global is_suspended_by_game, is_suspended_by_time, detected_game_name
+
+    is_suspended_by_time = check_time_sleeping()
+
+    if DETECTOR_URL:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(DETECTOR_URL, timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        is_suspended_by_game = data.get("game_running", False)
+                        detected_game_name = data.get("game_name", "")
+                    else:
+                        is_suspended_by_game = False
+        except Exception:
+            is_suspended_by_game = False
+
+    if is_suspended_by_game:
+        await bot.change_presence(
+            status=discord.Status.dnd, 
+            activity=discord.Game(name=f"Suspended: Game Detected ({detected_game_name})")
+        )
+    elif is_suspended_by_time:
+        await bot.change_presence(
+            status=discord.Status.idle, 
+            activity=discord.Game(name="Suspended: Out of Operating Hours")
+        )
+    else:
+        await bot.change_presence(
+            status=discord.Status.online, 
+            activity=discord.Activity(type=discord.ActivityType.listening, name="Mentions")
+        )
+
+
+# ==================================================
+# --- AI Engine Integration (rinna Persona / LM Studio) ---
+# ==================================================
+
+async def generate_rinna_response(prompt: str) -> str:
+    if not LM_STUDIO_URL:
+        return "(Error: LM Studio URL is not configured)"
+
+    # 名前は BOT_CHARACTER_NAME を使用し、言動・口調は「りんな」のスタイルを維持
+    system_prompt = (
+        f"ユーザー: {BOT_CHARACTER_NAME}\n"
+        f"システム: あなたの名前は「{BOT_CHARACTER_NAME}」です。"
+        "言動やトーン、口調は「りんな」として、親しみやすく明るい友人のような日本語で会話してください。"
+    )
+
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 300
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(LM_STUDIO_URL, json=payload, timeout=20) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    return result["choices"][0]["message"]["content"].strip()
+                else:
+                    return f"(Error: AI Server Response Code {resp.status})"
+    except Exception as e:
+        send_log.log_ubuntu_failed(f"LM Studio Connection Error: {e}")
+        return "(The AI Engine is currently offline or unreachable)"
+
+
+# ==================================================
+# --- Admin Shutdown Utilities ---
+# ==================================================
+
+async def scheduled_shutdown_timer(seconds: int, channel: discord.TextChannel):
+    """Delayed shutdown task"""
+    send_log.log_ubuntu_ok(f"Scheduled shutdown initiated. System will power off in {seconds} seconds.")
+    await asyncio.sleep(seconds)
+    await channel.send(f"[SYSTEM] Scheduled shutdown timer expired ({seconds}s). Initiating system halt.")
+    shutdown_event.set()
+
+def parse_shutdown_command(content: str):
+    """
+    Parses command type and timer from prompt.
+    Returns (is_cmd, mode, seconds)
+    """
+    cmd = content.strip().lower()
+
+    # Immediate shutdown keywords
+    if cmd in ["/shutdown now", "shutdown /s /t 0", "shutdown /s /t0", "halt", "poweroff", "init 0", "shutdown -h now"]:
+        return True, "NOW", 0
+
+    # Timer based shutdown patterns
+    win_match = re.search(r"shutdown\s+/s\s+/t\s*(\d+)", cmd)
+    if win_match:
+        return True, "TIMER", int(win_match.group(1))
+
+    linux_match = re.search(r"shutdown\s+-h\s+\+?(\d+)", cmd)
+    if linux_match:
+        return True, "TIMER", int(linux_match.group(1)) * 60 if "+" in cmd else int(linux_match.group(1))
+
+    return False, None, 0
+
+
+# ==================================================
+# --- Event Handlers & Chat Routine ---
 # ==================================================
 
 async def scheduled_graceful_shutdown(delay: int):
-    """一定時間経過による自動シャットダウン"""
     await asyncio.sleep(delay)
     shutdown_event.set()
 
 @bot.event
 async def on_ready():
-    await log_ubuntu_working(f"Starting Discord Bot Service for {bot.user}...", duration=2.0)
-    log_ubuntu_ok("Connected to Discord Gateway Websocket.")
-    log_ubuntu_ok("Reached target Multi-User System / Ready for prey.")
+    await start_log_server()
+    await send_log.log_ubuntu_working(f"Starting Roomba Control Daemon Service for {bot.user}...", duration=2.0)
+    send_log.log_ubuntu_ok("Connected to Discord Gateway Websocket.")
+    
+    monitor_system.start()
     bot.loop.create_task(scheduled_graceful_shutdown(LIFETIME_SECONDS))
 
 @bot.event
 async def on_error(event, *args, **kwargs):
-    """イベント処理中（on_message等）の未捕獲エラーハンドラ（パニックさせず継続）"""
-    log_ubuntu_failed(f"Unhandled error in event '{event}'. System running continuously.")
+    send_log.log_ubuntu_failed(f"Unhandled error in event '{event}'.")
 
 @bot.event
 async def on_message(message: discord.Message):
+    global timer_task
+
     if message.author.bot:
         return
 
-    content_normalized = normalize_text(message.content)
+    # Trigger on Mention or DM
+    if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
+        prompt = message.content.replace(f"<@{bot.user.id}>", "").strip()
 
-    # 1. 捕食（即BAN処理）
-    detected_ban_words = [
-        word for word in BAN_WORDS 
-        if normalize_text(word) in content_normalized
-    ]
+        # Check for admin shutdown commands
+        is_cmd, mode, delay_sec = parse_shutdown_command(prompt)
+        
+        if is_cmd:
+            # Check Administrator permission
+            is_admin = False
+            if isinstance(message.author, discord.Member):
+                is_admin = message.author.guild_permissions.administrator
+            elif isinstance(message.channel, discord.DMChannel):
+                is_admin = True  # Allow in Direct Messages
 
-    if detected_ban_words:
-        try:
-            await message.delete()
-        except discord.HTTPException:
-            pass
+            if not is_admin:
+                await message.reply("[ERROR] Permission denied. Required: Administrator privileges.")
+                send_log.log_ubuntu_failed(f"Unauthorized shutdown attempt by user: {message.author} (ID: {message.author.id})")
+                return
 
-        words_str = "』『".join(detected_ban_words)
+            if mode == "NOW":
+                await message.reply("[SYSTEM] Shutdown command accepted. Halting system immediately...")
+                send_log.log_ubuntu_ok(f"Immediate shutdown requested by administrator: {message.author}")
+                shutdown_event.set()
+                return
 
-        raw_dm_notice = (
-            f"【捕食通知】\n"
-            f"あなたは禁止ワード『{words_str}』を放ったため、弱肉強食の理により食されました。\n"
-            f"ごちそうさでした。二度とお目にかかることはないでしょう。"
-        )
-        dm_notice = bite_text(raw_dm_notice, chance=0.25)
+            elif mode == "TIMER":
+                if timer_task and not timer_task.done():
+                    timer_task.cancel()
+                timer_task = asyncio.create_task(scheduled_shutdown_timer(delay_sec, message.channel))
+                await message.reply(f"[SYSTEM] Scheduled shutdown registered. System will halt in {delay_sec} seconds.")
+                return
 
-        try:
-            await message.author.send(dm_notice)
-            log_ubuntu_ok(f"Sent prey notification DM to {message.author}")
-        except discord.Forbidden:
-            log_ubuntu_ok(f"DM closed for {message.author}. Proceeding directly to ban.")
-        except discord.HTTPException as e:
-            log_ubuntu_failed(f"DM Error: {e}")
+        # Normal Chat Handling
+        if is_suspended_by_game:
+            await message.reply(f"[WARNING] Currently suspended because a game ({detected_game_name}) is running on the host PC.")
+            return
+        if is_suspended_by_time:
+            await message.reply("[WARNING] Currently suspended due to off-hours operation schedule.")
+            return
 
-        try:
-            reason_words = ", ".join(detected_ban_words)
-            await message.guild.ban(
-                message.author,
-                reason=f"禁止ワード（{reason_words}）の検出により子分BOTが捕食（BAN）しました。"
-            )
-            
-            raw_channel_eat_text = f"🍖 **捕食完了:** {message.author.mention} は禁止ワードを放ったため、美味しく食されました。ごちそうさでした！"
-            channel_eat_text = bite_text(raw_channel_eat_text, chance=0.25)
-            eat_msg = await message.channel.send(channel_eat_text)
-            await eat_msg.delete(delay=5)
+        if not prompt:
+            await message.reply("Say something to me!")
+            return
 
-            record_channel = bot.get_channel(RECORD_CHANNEL_ID)
-            if record_channel:
-                title_text = bite_text("📜 【捕食アーカイブ】処分ユーザー記録", chance=0.25)
-                desc_text = "弱肉強食の理により、新たな荒らしが食されました。ごちそうさでした！"
-                footer_text = bite_text("弱肉強食の理により、サーバーの平和は保たれた…", chance=0.25)
-
-                embed = discord.Embed(
-                    title=title_text,
-                    description=desc_text,
-                    color=discord.Color.dark_red()
-                )
-                embed.set_thumbnail(url=message.author.display_avatar.url)
-                embed.add_field(name="対象ユーザー", value=f"{message.author.mention} (`{message.author.name}`)", inline=False)
-                embed.add_field(name="検出ワード", value=f"`{reason_words}`", inline=False)
-                embed.set_footer(text=footer_text)
-                
-                await record_channel.send(embed=embed)
-
-            log_ubuntu_ok(f"Banned user {message.author} successfully.")
-
-        except discord.Forbidden:
-            raw_err_msg = "【エラー】捕食しようとしましたが、権限が足りず食べ残してしまいました（BOTより権限が高いか同等です）。"
-            err_msg = bite_text(raw_err_msg, chance=0.35)
-            await message.channel.send(err_msg)
-        except discord.HTTPException as e:
-            log_ubuntu_failed(f"Ban action failed: {e}")
-
-        return
-
-    # 2. 清掃（メッセージ削除処理）
-    for word in DELETE_WORDS:
-        if normalize_text(word) in content_normalized:
-            try:
-                await message.delete()
-                raw_clean_text = f"🧹 **清掃完了:** {message.author.mention} の不適切な発言をルンバがキレイに清掃しました。"
-                clean_text = bite_text(raw_clean_text, chance=0.25)
-                clean_msg = await message.channel.send(clean_text)
-                await clean_msg.delete(delay=5)
-                log_ubuntu_ok(f"Cleaned message from {message.author}")
-            except discord.Forbidden:
-                pass
-            except discord.HTTPException as e:
-                log_ubuntu_failed(f"Clean action failed: {e}")
+        async with message.channel.typing():
+            ai_reply = await generate_rinna_response(prompt)
+            await message.reply(ai_reply)
             return
 
     await bot.process_commands(message)
 
 
 # ==================================================
-# --- エントリーポイント (シグナル ＆ 起動管理) ---
+# --- Entry Point ---
 # ==================================================
 
 async def main():
-    token = os.getenv("DISCORD_TOKEN")
-    if not token:
-        # トークン欠損は即時 Kernel Panic
+    if not DISCORD_TOKEN:
         raise ValueError("DISCORD_TOKEN environment variable is not set (Critical)")
 
-    show_ubuntu_boot_banner()
+    send_log.show_ubuntu_boot_banner()
 
     loop = asyncio.get_running_loop()
 
@@ -327,7 +295,7 @@ async def main():
         except NotImplementedError:
             signal.signal(sig, lambda s, f: shutdown_event.set())
 
-    bot_task = asyncio.create_task(bot.start(token))
+    bot_task = asyncio.create_task(bot.start(DISCORD_TOKEN))
     shutdown_task = asyncio.create_task(shutdown_event.wait())
 
     done, pending = await asyncio.wait(
@@ -336,8 +304,10 @@ async def main():
     )
 
     if shutdown_event.is_set():
-        await show_ubuntu_shutdown_sequence()
+        print(f"{send_log.WHT}[{send_log.RST} {send_log.GRN} OK {send_log.RST}{send_log.WHT}]{send_log.RST} Stopped Roomba Control Daemon Service (SIGTERM/SIGINT processed).", flush=True)
+        send_log.print_systemd_shutdown_ok()
         await bot.close()
+        sys.exit(0)
 
     for task in pending:
         task.cancel()
@@ -346,7 +316,6 @@ async def main():
         except asyncio.CancelledError:
             pass
 
-    # 通信切断 / ログイン失敗などの致命的エラー時のみ例外をスローして Panic
     if bot_task in done and bot_task.exception():
         raise bot_task.exception()
 
@@ -357,6 +326,5 @@ if __name__ == "__main__":
     except (KeyboardInterrupt, SystemExit):
         sys.exit(0)
     except Exception as e:
-        # 通信不能・起動不能などの「致命的障害」でのみ Kernel Panic を発生させる
-        trigger_kernel_panic(type(e), e, e.__traceback__)
+        send_log.trigger_kernel_panic(type(e), e, e.__traceback__, token=DISCORD_TOKEN, channel_id=RECORD_CHANNEL_ID, exit_code=1)
         sys.exit(1)
